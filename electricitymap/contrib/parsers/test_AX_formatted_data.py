@@ -1,12 +1,12 @@
 # tests/parsers/test_AX_formatted_data.py
 import types
 from datetime import datetime
+
 import pytest
 
 # Ajuste o import abaixo se o caminho do módulo for diferente no seu fork
 import electricitymap.contrib.parsers.AX as AX
 from electricitymap.contrib.parsers.lib.exceptions import ParserException
-
 
 # --------------------------------------------------------------------------------------
 # Helpers de monkeypatch

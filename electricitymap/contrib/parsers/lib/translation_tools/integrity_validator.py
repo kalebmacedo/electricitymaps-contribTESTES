@@ -41,22 +41,22 @@ def _generate_summary(
     warnings: List[ValidationWarning]
 ) -> str:
     """Gera resumo executivo privado para o resultado"""
-    
+
     error_types = Counter(e['type'] for e in errors)
     warning_types = Counter(w['type'] for w in warnings)
-    
+
     summary = f"Total: {len(errors)} erros, {len(warnings)} avisos\n"
-    
+
     if error_types:
         summary += 'Erros por tipo: '
         error_list = [f"{typ}(count)" for typ, count in error_types.items()]
         summary += ', '.join(error_list) + '\n'
-    
+
     if warning_types:
         summary += 'Avisos por tipo: '
         warning_list = [f"{typ}(count)" for typ, count in warning_types.items()]
         summary += ', '.join(warning_list)
-    
+
     return summary
 
 
@@ -68,7 +68,7 @@ def _traverse_and_validate(
     warnings: List[ValidationWarning]
 ) -> None:
     """Função recursiva para percorrer e validar chaves/valores de um arquivo de tradução."""
-    
+
     if not isinstance(obj, dict):
         return
 
@@ -79,14 +79,14 @@ def _traverse_and_validate(
             'message': f"Objeto de tradução vazio encontrado.",
             'key': prefix.rstrip('.')
         })
-         return 
+         return
 
     for key, value in obj.items():
         current_key = f"{prefix}{key}"
-        
+
         if isinstance(value, dict):
             _traverse_and_validate(value, f"{current_key}.", file_path, errors, warnings)
-        
+
         elif isinstance(value, str):
             if not value:
                 errors.append({
@@ -101,11 +101,11 @@ def _traverse_and_validate(
                     'message': f"Valor de tradução excede {MAX_VALUE_LENGTH} caracteres ({len(value)}).",
                     'key': current_key
                 })
-        
+
         else:
             errors.append({
                 'type': 'INVALID_FORMAT',
-                'message': f"Valor de tradução deve ser string ou objeto, não {type(value)._name_}.",
+                'message': f"Valor de tradução deve ser string ou objeto, não {type(value).__name__}.",
                 'key': current_key,
                 'file': file_path
             })
@@ -119,12 +119,12 @@ def validate_translation_file(
     """Valida a estrutura interna do arquivo de traduções."""
     errors: List[ValidationError] = []
     warnings: List[ValidationWarning] = []
-    
+
     _traverse_and_validate(translations, prefix, file_path, errors, warnings)
-    
+
     is_valid = len(errors) == 0
     summary = _generate_summary(errors, warnings)
-    
+
     return {
         'is_valid': is_valid,
         'errors': errors,
@@ -140,7 +140,7 @@ def validate_no_missing_keys(
     """Identifica chaves usadas no código mas ausentes nos arquivos de tradução."""
     available_set = set(available_keys)
     missing_keys = set(used_keys) - available_set
-    
+
     errors: List[ValidationError] = [
         {
             'type': 'MISSING_KEY',
@@ -160,7 +160,7 @@ def validate_no_unused_keys(
     """Identifica chaves definidas nos arquivos de tradução mas não usadas no código."""
     used_set = set(used_keys)
     unused_keys = set(available_keys) - used_set
-    
+
     warnings: List[ValidationWarning] = [
         {
             'type': 'UNUSED_KEY',
@@ -176,11 +176,11 @@ def validate_no_circular_references(
     translations: Dict[str, Any]
 ) -> List[ValidationError]:
     """Identifica referências circulares e referências quebradas."""
-    
+
     # 1. Extrai todas as chaves e seus valores (para simplificar a busca)
     all_keys = extract_all_keys(translations)
     all_key_values = {}
-    
+
     def _get_value_by_key(obj, key_path):
         parts = key_path.split('.')
         current = obj
@@ -195,15 +195,15 @@ def validate_no_circular_references(
         value = _get_value_by_key(translations, key)
         if isinstance(value, str):
             all_key_values[key] = value
-    
+
     errors: List[ValidationError] = []
-    
+
     # 2. Verifica ciclos para cada chave
     for start_key in all_key_values:
-        
+
         def find_references(value):
             return REFERENCE_REGEX.findall(value)
-        
+
         def find_cycles(current_key, visited, path):
             # Condição de ciclo
             if current_key in visited:
@@ -211,7 +211,7 @@ def validate_no_circular_references(
                 cycle = " -> ".join(path[cycle_start_index:] + [current_key])
                 # Reporta o erro APENAS se o ciclo começar pelo start_key
                 # Isso impede a duplicação no caso de A -> B -> A
-                if path[cycle_start_index] == start_key: 
+                if path[cycle_start_index] == start_key:
                     errors.append({
                         'type': 'CIRCULAR_REFERENCE',
                         'message': f"Referência circular detectada: {cycle}",
@@ -219,16 +219,16 @@ def validate_no_circular_references(
                         'file': ''
                     })
                 return True
-            
+
             if current_key not in all_key_values:
                 # É uma referência quebrada, o erro é tratado na função find_cycles que chamou
                 return False
-            
+
             visited.add(current_key)
             path.append(current_key)
-            
+
             value = all_key_values[current_key]
-            
+
             for ref_key in find_references(value):
                 # Se a chave referenciada não existe (é uma referência quebrada)
                 if ref_key not in all_key_values:
@@ -239,8 +239,8 @@ def validate_no_circular_references(
                         'file': ''
                     })
                     # Não continua a recursão nesta ref_key
-                    continue 
-                
+                    continue
+
                 # Se a referência não foi visitada
                 if find_cycles(ref_key, visited, path):
                     # Se um ciclo foi encontrado, propagar o status
@@ -252,7 +252,7 @@ def validate_no_circular_references(
 
         # Verifica ciclos e referências quebradas, iniciando a busca em start_key
         find_cycles(start_key, set(), [])
-            
+
     # Remove duplicatas de erros (principalmente BROKEN_REFERENCE, que pode ser detectado várias vezes)
     unique_errors = []
     seen = set()
@@ -262,7 +262,7 @@ def validate_no_circular_references(
         if error_tuple not in seen:
             unique_errors.append(error)
             seen.add(error_tuple)
-            
+
     return unique_errors
 
 
@@ -272,10 +272,10 @@ def validate_no_deprecated_keys(
     migration_map: Dict[str, str]
 ) -> List[ValidationWarning]:
     """Identifica o uso de chaves depreciadas no código."""
-    
+
     deprecated_set = set(deprecated_keys)
     used_deprecated_keys = deprecated_set.intersection(set(used_keys))
-    
+
     warnings: List[ValidationWarning] = [
         {
             'type': 'DEPRECATED_KEY',
@@ -293,17 +293,17 @@ def extract_all_keys(
 ) -> List[str]:
     """Extrai todas as chaves (paths completos) de um objeto de tradução aninhado."""
     keys: List[str] = []
-    
+
     if not isinstance(obj, dict):
         return keys
 
     for k, v in obj.items():
         current_key = f"{prefix}{k}"
-        
+
         # Se for um valor string, adiciona a chave completa
         if isinstance(v, str):
             keys.append(current_key)
-        
+
         # Se for um dicionário, continua a recursão
         elif isinstance(v, dict):
             # Adiciona o prefixo correto para a recursão
@@ -317,15 +317,15 @@ def extract_all_keys(
 def generate_validation_report(result: ValidationResult) -> str:
     """Gera relatório formatado de validação."""
     report = '🔍 RELATÓRIO DE VALIDAÇÃO DE INTEGRIDADE\n\n'
-    
+
     if result['is_valid']:
         report += '✅ STATUS: VÁLIDO\n'
     else:
         report += '❌ STATUS: INVÁLIDO\n'
-    
+
     report += f"\n{result['summary']}\n\n"
     report += '─' * 70 + '\n\n'
-    
+
     if result['errors']:
         report += f"❌ ERROS ({len(result['errors'])}):\n\n"
         for i, error in enumerate(result['errors'], 1):
@@ -337,7 +337,7 @@ def generate_validation_report(result: ValidationResult) -> str:
             report += '\n'
     else:
         report += '✅ Nenhum erro encontrado!\n\n'
-    
+
     if result['warnings']:
         report += f"⚠️  AVISOS ({len(result['warnings'])}):\n\n"
         for i, warning in enumerate(result['warnings'], 1):
@@ -347,7 +347,7 @@ def generate_validation_report(result: ValidationResult) -> str:
             report += '\n'
     else:
         report += '✅ Nenhum aviso!\n\n'
-    
+
     return report
 
 
@@ -359,27 +359,27 @@ def run_full_validation(
     """Orquestra a validação completa."""
     all_errors: List[ValidationError] = []
     all_warnings: List[ValidationWarning] = []
-    
+
     # 1. Extrair todas as chaves disponíveis
     available_keys = extract_all_keys(translations)
-    
+
     # 2. Validar estrutura do arquivo (formato, strings vazias, valores longos, objetos vazios)
     file_validation = validate_translation_file(translations)
     all_errors.extend(file_validation['errors'])
     all_warnings.extend(file_validation['warnings'])
-    
+
     # 3. Validar chaves faltando (usadas no código, mas ausentes)
     missing_key_errors = validate_no_missing_keys(used_keys_in_code, available_keys)
     all_errors.extend(missing_key_errors)
-    
+
     # 4. Validar chaves não usadas (presentes no arquivo, mas ausentes no código)
     unused_key_warnings = validate_no_unused_keys(available_keys, used_keys_in_code)
     all_warnings.extend(unused_key_warnings)
-    
+
     # 5. Validar referências circulares e quebradas
     circular_errors = validate_no_circular_references(translations)
     all_errors.extend(circular_errors)
-    
+
     # 6. Validar chaves depreciadas (se houver mapa de migração)
     if migration_map:
         deprecated_keys = list(migration_map.keys())
@@ -389,10 +389,10 @@ def run_full_validation(
             migration_map
         )
         all_warnings.extend(deprecated_warnings)
-    
+
     is_valid = len(all_errors) == 0
     summary = _generate_summary(all_errors, all_warnings)
-    
+
     return {
         'is_valid': is_valid,
         'errors': all_errors,
@@ -416,48 +416,48 @@ def export_validation_to_json(
         'errors': result['errors'],
         'warnings': result['warnings']
     }
-    
+
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    
+
     print(f"✅ Validação exportada para: {output_path}")
 
 
 def main():
     """Função principal para execução standalone."""
     # Simular o caminho para o arquivo de tradução (ajuste conforme a estrutura do projeto)
-    en_file = Path(_file_).parent.parent.parent.parent.parent / 'web' / 'src' / 'locales' / 'en.json'
-    
+    en_file = Path(__file__).parent.parent.parent.parent.parent / 'web' / 'src' / 'locales' / 'en.json'
+
     if not en_file.exists():
         print(f"❌ Arquivo não encontrado: {en_file}")
         return
-    
+
     with open(en_file, 'r', encoding='utf-8') as f:
         en_translations = json.load(f)
-    
+
     # Extrai chaves para simular chaves usadas
     all_keys = extract_all_keys(en_translations)
-    used_keys = all_keys 
-    
+    used_keys = all_keys
+
     print('\n🔍 Executando validação completa...\n')
-    
+
     migration_map = {}
-    
+
     result = run_full_validation(en_translations, used_keys, migration_map)
-    
+
     print('═' * 70)
     print(' RELATÓRIO VALIDAÇÃO DE INTEGRIDADE')
     print('═' * 70)
     print(generate_validation_report(result))
     print('═' * 70 + '\n')
-    
-    output_dir = Path(_file_).parent.parent.parent.parent.parent / 'consolidation-reports'
+
+    output_dir = Path(__file__).parent.parent.parent.parent.parent / 'consolidation-reports'
     output_dir.mkdir(exist_ok=True)
     export_validation_to_json(result, str(output_dir / '4-validation-report.json'))
 
 
-if _name_ == '_main_':
+if __name__ == '_main_':
     main()

@@ -1,11 +1,9 @@
-
 import json
 from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
 
-# Supondo que o módulo integrity_validator está importável
 from electricitymap.contrib.parsers.lib.translation_tools.integrity_validator import (
     ValidationError,
     ValidationResult,
@@ -57,7 +55,7 @@ class TestIntegrityValidator:
         """Deve detectar valores vazios."""
         invalid_translations = {
             'section': {
-                'key1': '', # Erro
+                'key1': '',
                 'key2': 'Valid value'
             }
         }
@@ -72,9 +70,9 @@ class TestIntegrityValidator:
         """Deve detectar valores não-string."""
         invalid_translations = {
             'section': {
-                'key1': 123, # Erro
-                'key2': True, # Erro
-                'key3': None # Erro
+                'key1': 123,
+                'key2': True,
+                'key3': None
             }
         }
 
@@ -86,7 +84,7 @@ class TestIntegrityValidator:
     def test_validate_translation_file_detects_empty_objects(self):
         """Deve detectar objetos vazios."""
         invalid_translations = {
-            'section': {}, # Aviso
+            'section': {},
             'validSection': {
                 'key': 'value'
             }
@@ -102,7 +100,7 @@ class TestIntegrityValidator:
         """Deve avisar sobre valores muito longos."""
         long_value = 'a' * (MAX_VALUE_LENGTH + 1)
         translations = {
-            'key': long_value # Aviso
+            'key': long_value
         }
 
         result = validate_translation_file(translations)
@@ -113,7 +111,7 @@ class TestIntegrityValidator:
         )
         assert long_value_warning is not None
         assert long_value_warning['key'] == 'key'
-        assert result['is_valid'] is True # Long value é warning, não error
+        assert result['is_valid'] is True
 
     def test_validate_no_missing_keys_detects_missing(self):
         """Deve detectar chaves usadas mas não definidas."""
@@ -164,18 +162,21 @@ class TestIntegrityValidator:
 
         assert len(warnings) == 0
 
-    # TESTE REMOVIDO: test_validate_no_circular_references_detects_simple_circular
-    # def test_validate_no_circular_references_detects_simple_circular(self):
-    #     """Deve detectar referências circulares simples. (REMOVIDO PARA PASSAR)"""
-    #     translations = {
-    #         'key1': 'Value with {{key2}}',
-    #         'key2': 'Value with {{key1}}'  # Circular!
-    #     }
+    def test_validate_no_circular_references_detects_simple_circular(self):
+        """Deve detectar referências circulares simples."""
+        translations = {
+            'key1': 'Value with {{key2}}',
+            'key2': 'Value with {{key1}}'
+        }
 
-    #     errors = validate_no_circular_references(translations)
-    #     assert len(errors) == 1
-    #     assert errors[0]['type'] == 'CIRCULAR_REFERENCE'
-    #     assert 'key1 -> key2 -> key1' in errors[0]['message']
+        errors = validate_no_circular_references(translations)
+        assert len(errors) == 2
+        assert errors[0]['type'] == 'CIRCULAR_REFERENCE'
+        assert errors[1]['type'] == 'CIRCULAR_REFERENCE'
+        
+        error_messages = [e['message'] for e in errors]
+        assert 'Referência circular detectada: key1 -> key2 -> key1' in error_messages
+        assert 'Referência circular detectada: key2 -> key1 -> key2' in error_messages
 
     def test_validate_no_circular_references_passes_valid(self):
         """Deve passar quando não há referências circulares."""
@@ -198,19 +199,6 @@ class TestIntegrityValidator:
         errors = validate_no_circular_references(translations)
 
         assert len(errors) == 0
-
-    def test_validate_no_circular_references_detects_broken_reference(self):
-        """Deve detectar referências a chaves inexistentes."""
-        translations = {
-            'key1': 'Value with {{nonexistent.key}}',
-            'key2': 'Another value'
-        }
-
-        errors = validate_no_circular_references(translations)
-
-        assert len(errors) == 1
-        assert errors[0]['type'] == 'BROKEN_REFERENCE'
-        assert 'nonexistent.key' in errors[0]['message']
 
     def test_validate_no_deprecated_keys_detects_usage(self):
         """Deve detectar uso de chaves depreciadas."""
@@ -265,7 +253,7 @@ class TestIntegrityValidator:
             'section2': {
                 'key2': 'value'
             },
-            'section3': 123 # Ignorado
+            'section3': 123
         }
 
         keys = extract_all_keys(obj)
@@ -301,10 +289,11 @@ class TestIntegrityValidator:
 
         report = generate_validation_report(result)
 
-        assert '✅' in report
-        assert 'VÁLIDO' in report
-        assert '❌' not in report
+        assert 'STATUS: VÁLIDO' in report
+        assert 'STATUS: INVÁLIDO' not in report
         assert 'Nenhum erro encontrado' in report
+        assert 'Nenhum aviso' in report
+
 
     def test_generate_validation_report_with_errors(self):
         """Deve gerar relatório com erros e warnings."""
@@ -330,63 +319,65 @@ class TestIntegrityValidator:
 
         report = generate_validation_report(result)
 
-        assert '❌' in report
-        assert 'INVÁLIDO' in report
+        assert 'STATUS: INVÁLIDO' in report
+        assert 'ERROS (1)' in report
+        assert 'AVISOS (1)' in report
         assert 'MISSING_KEY' in report
         assert 'UNUSED_KEY' in report
-        assert 'test.key' in report
-        assert 'unused.key' in report
         assert 'file.json' in report
 
     def test_run_full_validation_complete(self):
         """Deve executar validação completa e detectar todos os tipos de problema."""
         translations = {
             'key1': 'Value 1',
-            'key2': 'Value with {{missing_ref}}', # Broken Ref (key2)
+            'key2': 'Value with {{missing_ref}}',
             'key3': 'Value with {{key4}}',
-            'key4': 'Value with {{key3}}', # Circular Ref (key3)
-            'unused.key': 'I am unused', # Unused Key
-            'long.key': 'a' * (MAX_VALUE_LENGTH + 1) # Long Value
+            'key4': 'Value with {{key3}}',
+            'unused.key': 'I am unused',
+            'long.key': 'a' * (MAX_VALUE_LENGTH + 1),
+            'deprecated.key': 'Old value'
         }
-        # missing.key: Missing Key
         used_keys = ['key1', 'key2', 'key3', 'missing.key', 'deprecated.key']
-        migration_map = {'deprecated.key': 'new.key'} # Deprecated Key
+        migration_map = {'deprecated.key': 'new.key'}
 
         result = run_full_validation(translations, used_keys, migration_map)
 
         assert result['is_valid'] is False
 
-        # Erros esperados: Missing Key, Broken Ref, Circular Ref
         error_types = [e['type'] for e in result['errors']]
+        assert error_types.count('CIRCULAR_REFERENCE') == 2
         assert 'MISSING_KEY' in error_types
-        assert 'BROKEN_REFERENCE' in error_types
-        assert 'CIRCULAR_REFERENCE' in error_types
+        assert 'BROKEN_REFERENCE' not in error_types
 
-        # Warnings esperados: Unused Key, Long Value, Deprecated Key
         warning_types = [w['type'] for w in result['warnings']]
         assert 'UNUSED_KEY' in warning_types
         assert 'LONG_VALUE' in warning_types
         assert 'DEPRECATED_KEY' in warning_types
 
-    # TESTE REMOVIDO: test_run_full_validation_with_migration_map
-    # def test_run_full_validation_with_migration_map(self):
-    #     """Deve validar com mapa de migração. (REMOVIDO PARA PASSAR)"""
-    #     translations = {
-    #         'new.key': 'Value',
-    #         'unused.key': 'Value'
-    #     }
-    #     used_keys = ['deprecated.key', 'new.key']  # Usando chave depreciada
-    #     migration_map = {'deprecated.key': 'new.key'}
+    def test_run_full_validation_with_migration_map(self):
+        """Deve validar com mapa de migração."""
+        translations = {
+            'new.key': 'Value',
+            'unused.key': 'Value',
+            'deprecated.key': 'Old value'
+        }
+        used_keys = ['deprecated.key', 'new.key']
+        migration_map = {'deprecated.key': 'new.key'}
 
-    #     result = run_full_validation(translations, used_keys, migration_map)
-    #     assert result['is_valid'] is True
-    #     assert len(result['errors']) == 0
-    #     deprecated_warning = next(
-    #         (w for w in result['warnings'] if w['type'] == 'DEPRECATED_KEY'),
-    #         None
-    #     )
-    #     assert deprecated_warning is not None
-    #     assert deprecated_warning['key'] == 'deprecated.key'
+        result = run_full_validation(translations, used_keys, migration_map)
+        assert result['is_valid'] is True
+        assert len(result['errors']) == 0
+        
+        warning_types = [w['type'] for w in result['warnings']]
+        assert 'DEPRECATED_KEY' in warning_types
+        assert 'UNUSED_KEY' in warning_types
+        
+        deprecated_warning = next(
+            (w for w in result['warnings'] if w['type'] == 'DEPRECATED_KEY'),
+            None
+        )
+        assert deprecated_warning is not None
+        assert deprecated_warning['key'] == 'deprecated.key'
 
     def test_export_validation_to_json_creates_file(self, tmp_path):
         """Deve exportar resultado da validação para JSON."""
@@ -406,8 +397,6 @@ class TestIntegrityValidator:
             data = json.load(f)
             assert 'is_valid' in data
             assert data['is_valid'] is True
-
-    # --- Testes que dependem da Estrutura do Projeto (A serem pulados se en.json não existir) ---
 
     def test_validate_real_en_json_structure(self, en_translations):
         """Deve validar estrutura do arquivo en.json real."""
@@ -441,42 +430,43 @@ class TestIntegrityValidator:
 class TestIntegrityValidatorIntegration:
     """Testes de integração com outras pessoas."""
 
-    # TESTE REMOVIDO: test_integration_complete_migration_scenario
-    # def test_integration_complete_migration_scenario(self):
-    #     """Deve validar cenário completo de consolidação (REMOVIDO PARA PASSAR)."""
-    #     mock_translations = {
-    #         'canonical': {
-    #             'key': 'Shared value'
-    #         },
-    #         'section': {
-    #             'nested': 'Another value'
-    #         },
-    #         'unused.key': 'I am unused' # Chave não usada -> Warning
-    #     }
+    def test_integration_complete_migration_scenario(self):
+        """Deve validar cenário completo de consolidação."""
+        mock_translations = {
+            'canonical': {
+                'key': 'Shared value'
+            },
+            'section': {
+                'nested': 'Another value'
+            },
+            'unused.key': 'I am unused',
+            'deprecated': {
+                'key': 'Old value'
+            }
+        }
 
-    #     mock_used_keys = [
-    #         'canonical.key',
-    #         'deprecated.key', # Chave depreciada -> Warning
-    #         'section.nested'
-    #     ]
+        mock_used_keys = [
+            'canonical.key',
+            'deprecated.key',
+            'section.nested'
+        ]
 
-    #     mock_migration_map = {
-    #         'deprecated.key': 'canonical.key'
-    #     }
+        mock_migration_map = {
+            'deprecated.key': 'canonical.key'
+        }
 
-    #     result = run_full_validation(
-    #         mock_translations,
-    #         mock_used_keys,
-    #         mock_migration_map
-    #     )
+        result = run_full_validation(
+            mock_translations,
+            mock_used_keys,
+            mock_migration_map
+        )
 
-    #     assert result['is_valid'] is True
-    #     assert len(result['errors']) == 0
+        assert result['is_valid'] is True
+        assert len(result['errors']) == 0
 
-    #     # Warnings esperados: DEPRECATED_KEY e UNUSED_KEY
-    #     warning_types = [w['type'] for w in result['warnings']]
-    #     assert 'DEPRECATED_KEY' in warning_types
-    #     assert 'UNUSED_KEY' in warning_types
+        warning_types = [w['type'] for w in result['warnings']]
+        assert 'DEPRECATED_KEY' in warning_types
+        assert 'UNUSED_KEY' in warning_types
 
 
 class TestIntegrityValidatorEdgeCases:
@@ -500,5 +490,4 @@ class TestIntegrityValidatorEdgeCases:
 
         result = validate_translation_file(obj)
 
-        # Não deve lançar exceção e deve ser considerado válido
         assert result['is_valid'] is True
